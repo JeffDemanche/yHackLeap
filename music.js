@@ -95,8 +95,10 @@ var variableAttributes = {
     // How much of the chord duration is voiced.
     chordStaccato: 0.98,
 
-    bassRhythmComplexity: 3,
+    bassRhythmComplexity: 8,
     bassRhythmSyncopation: 3,
+    bassStaccato: 0.7,
+    bassOctave: 2,
 
     rhythmComplexity: 0.5
 }
@@ -106,7 +108,7 @@ var sfInstruments = ['acoustic_bass', 'acoustic_grand_piano', 'cello',
     'orchestral_harp', 'violin'];
 
 var bassChannel = { name: "bass", channel: 0, instr: 'acoustic_bass', velocity: 100 };
-var chordChannel = { name: "chord", channel: 1, instr: 'cello', velocity: 45 };
+var chordChannel = { name: "chord", channel: 1, instr: 'cello', velocity: 100 };
 var arpChannel = { name: "arp", channel: 2, instr: 'oboe', velocity: 100 };
 var harmChannel = { name: "harm", channel: 3, instr: 'violin', velocity: 100 };
 
@@ -300,16 +302,16 @@ function playChord() {
             playBass(progPosition);
         }
 
-        voiceKeyChord("chord", currentChordProg[progPosition], 
+        voiceKeyChord("chord", currentChordProg.prog[progPosition], 
             variableAttributes.chordOctave, variableAttributes.chordComplexity,
-            chordHitDuration);
+            variableAttributes.chordStaccato * chordHitDuration);
         // Update a couple of counters.
         numHitsAtPosition++;
         if (numHitsAtPosition == variableAttributes.chordHitsPerLength) {
             numHitsAtPosition = 0;
             progPosition++;
         }
-        if (progPosition == currentChordProg.length) {
+        if (progPosition == currentChordProg.prog.length) {
             progPosition = 0;
         }
 
@@ -349,7 +351,7 @@ function playArp(progPosition) {
 
             // Computes a duration unrelated to the interval counter.
             var duration = variableAttributes.arpStaccato * (1 / variableAttributes.arpComplexity);
-            var currentChord = currentChordProg[progPosition];
+            var currentChord = currentChordProg.prog[progPosition];
             // Array of notes in the current played chord.
             var chordNotes = notesInChord(currentChord, variableAttributes.arpOctave);
             var modalIntervals = keyIntervalsRelative(currentChord);
@@ -372,25 +374,32 @@ function playArp(progPosition) {
     arpLoop();
 }
 
+var bassSequences = [[[0, 0.5], [-1, 0.5], [0, 3]],
+                     [[0, 0.75], [2, 0.25], [4, 0.5], [-1, 0.5], [0, 2]],
+                     [[2, 1], [0, 1], [-1, 0.5], [4, 1.5]]];
+var currentBassSequence = bassSequences[1];
+
 function playBass(progPosition) {
-
-}
-
-/**
- * Chooses a chord via a 
- */
-function chooseChord() {
     // Keeps track of the amount of notes played. This will terminate when
     // bassRhythmComplexity is reached.
     var notesCounter = 0;
+    var seqCounter = 0;
     var bassLoop = function() {
-        var noteDuration = 0;
-        noteDuration = 4 / variableAttributes.bassRhythmComplexity;
+        var noteDuration = currentBassSequence[seqCounter][1];
 
+        var currentChord = currentChordProg.prog[progPosition];
+        var modalIntervals = keyIntervalsRelative(currentChord);
+        var interval = currentBassSequence[seqCounter][0];
+        var noteToPlay = globalAttributes.keyNote.getOffset(modalIntervals[interval]);
+        noteToPlay.setOctave(variableAttributes.bassOctave);
 
-        if (notesCounter < variableAttributes.bassRhythmComplexity && globalAttributes.playing) {
-            setTimeout(bassLoop, noteDuration);
+        voiceNote("bass", noteToPlay.getName(), variableAttributes.bassStaccato * noteDuration);
+
+        if (globalAttributes.playing && seqCounter < currentBassSequence.length - 1) {
+            setTimeout(bassLoop, beatsToMillis(noteDuration));
         }
+        notesCounter++;
+        seqCounter++;
     };
     bassLoop();
 }
