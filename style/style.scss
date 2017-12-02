@@ -1,0 +1,18 @@
+@import url('https://fonts.googleapis.com/css?family=Crimson+Text:400,600|Raleway');
+ 
+$font_fancy: 'Crimson Text', serif;
+$font_text: 'Raleway', sans-serif;
+
+body {
+    font-family: $font_text;
+}
+h1 {
+    font-family: $font_fancy;
+    font-weight: 600;
+    font-size: 24pt;
+}
+
+#header-container {
+    text-align: center;
+    line-height: 1.3;
+}
