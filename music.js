@@ -1,8 +1,17 @@
-/*
- *
- * In the following part of the file, we try to generate a song.
- * 
- */
+$(function() {
+    intializeMIDI();
+    $("#start-button").prop("disabled", true);
+    $("#stop-button").click(function() {
+        stopPlaying();
+        $("#stop-button").prop("disabled", true);
+        $("#start-button").prop("disabled", false);
+    });
+    $("#start-button").click(function() {
+        beginPlaying();
+        $("#stop-button").prop("disabled", false);
+        $("#start-button").prop("disabled", true);
+    });
+});
 
 var pitches = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
 
@@ -63,6 +72,7 @@ class Note {
 var globalAttributes = {
     key: "C",
     keyNote: new Note("C3"),
+    playing: true,
     tempo: 120
 }
 
@@ -71,7 +81,15 @@ var globalAttributes = {
  */
 var variableAttributes = {
     arpComplexity: 0.5,
-    chordComplexity: 0.5,
+
+    // 3 -> triad, 4 -> seventh, etc.
+    chordComplexity: 3,
+    chordOctave: 2,
+    chordLengthBeats: 4,
+    chordHitsPerLength: 1,
+    // How much of the chord duration is voiced.
+    chordStaccato: 0.98,
+
     rhythmComplexity: 0.5
 }
 
@@ -85,10 +103,6 @@ var arpChannel = { name: "arp", channel: 2, instr: 'orchestral_harp', velocity: 
 var harmChannel = { name: "harm", channel: 3, instr: 'violin', velocity: 100 };
 
 var channels = [bassChannel, chordChannel, arpChannel, harmChannel];
-
-$(function() {
-    intializeMIDI();
-});
 
 function intializeMIDI() {
     MIDI.loadPlugin({
@@ -113,11 +127,26 @@ function intializeMIDI() {
     })
 }
 
+// A bank of chord progressions that could be swapped in at any time.
+var chordProgs = [["I", "IV", "V", "I"],
+                  ["I", "IV", "V", "IV"],
+                  ["vi", "ii", "V", "I"],
+                  ["V", "IV", "I", "I"],
+                  ["vii", "V", "V", "I"]];
+var currentChordProg = chordProgs[0];
+
 /**
  * Called when the music starts playing.
  */
 function beginPlaying() {
-    voiceKeyChord("chord", "ii", 2, 3, 4);
+    globalAttributes.playing = true;
+    // NOTE: The playChord function calls other play functions, in order
+    // to avoid everything getting out of sync.
+    setTimeout(function() { playChord(); }, 0);
+}
+
+function stopPlaying() {
+    globalAttributes.playing = false;
 }
 
 /**
@@ -127,11 +156,11 @@ function beginPlaying() {
  * @param {*} notes An array of objects in order, where each object is
  *                  like {noteName, duration(beats)}.
  */
-function playMelody(channel, notes) {
+function voiceMelody(channel, notes) {
     if (notes.length == 0) return;
     voiceNote(channel, notes[0].noteName, notes[0].duration);
     setTimeout(function() {
-        playMelody(channel, notes.slice(1));
+        voiceMelody(channel, notes.slice(1));
     }, beatsToMillis(notes[0].duration));
 }
 
@@ -209,7 +238,50 @@ function notesInChord(chord, startOctave) {
 }
 
 /**
- * 
+ * The play function for the chord channel.
+ */
+function playChord() {
+    // The index in the chord progression we're playing.
+    var progPosition = 0;
+
+    var numHitsAtPosition = 0;
+
+    // The duration (in decimal beats) that a single HIT of a chord is played.
+    var chordHitDuration = variableAttributes.chordStaccato * 
+            (variableAttributes.chordLengthBeats / variableAttributes.chordHitsPerLength);
+
+    var loop = function() {
+        voiceKeyChord("chord", currentChordProg[progPosition], 
+            variableAttributes.chordOctave, variableAttributes.chordComplexity,
+            chordHitDuration);
+        // Update a couple of counters.
+        numHitsAtPosition++;
+        if (numHitsAtPosition == variableAttributes.chordHitsPerLength) {
+            numHitsAtPosition = 0;
+            progPosition++;
+        }
+        if (progPosition == currentChordProg.length) {
+            progPosition = 0;
+        }
+        
+
+        setTimeout(function() {
+            if (globalAttributes.playing)
+                loop();
+        }, beatsToMillis(variableAttributes.chordLengthBeats / variableAttributes.chordHitsPerLength));
+    }
+    loop();
+}
+
+/**
+ * The play function for the arpeggiator channel.
+ */
+function playArp() {
+
+}
+
+/**
+ * Chooses a chord via a 
  */
 function chooseChord() {
 
