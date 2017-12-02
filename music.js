@@ -88,12 +88,15 @@ var variableAttributes = {
     arpOctave: 4,
 
     // 3 -> triad, 4 -> seventh, etc.
-    chordComplexity: 2,
+    chordComplexity: 3,
     chordOctave: 3,
     chordLengthBeats: 4,
     chordHitsPerLength: 1,
     // How much of the chord duration is voiced.
     chordStaccato: 0.98,
+
+    bassRhythmComplexity: 3,
+    bassRhythmSyncopation: 3,
 
     rhythmComplexity: 0.5
 }
@@ -104,7 +107,7 @@ var sfInstruments = ['acoustic_bass', 'acoustic_grand_piano', 'cello',
 
 var bassChannel = { name: "bass", channel: 0, instr: 'acoustic_bass', velocity: 100 };
 var chordChannel = { name: "chord", channel: 1, instr: 'cello', velocity: 45 };
-var arpChannel = { name: "arp", channel: 2, instr: 'orchestral_harp', velocity: 100 };
+var arpChannel = { name: "arp", channel: 2, instr: 'oboe', velocity: 100 };
 var harmChannel = { name: "harm", channel: 3, instr: 'violin', velocity: 100 };
 
 var channels = [bassChannel, chordChannel, arpChannel, harmChannel];
@@ -127,17 +130,33 @@ function intializeMIDI() {
                     }
                 });
             }, this);
+
+            MIDI.setEffects([
+                {
+                    type: "Convolver",
+                    highCut: 22050, // 20 to 22050
+                    lowCut: 20, // 20 to 22050
+                    dryLevel: 1, // 0 to 1+
+                    wetLevel: 1, // 0 to 1+
+                    level: 1, // 0 to 1+, adjusts total output of both wet and dry
+                    impulse: "./inc/tuna/impulses/impulse_rev.wav", // the path to your impulse response
+                    bypass: 0
+                }
+            ]);
             
         }
     })
 }
 
 // A bank of chord progressions that could be swapped in at any time.
-var chordProgs = [["I", "IV", "V", "I"],
-                  ["I", "IV", "V", "IV"],
-                  ["vi", "ii", "V", "I"],
-                  ["V", "IV", "I", "I"],
-                  ["vii", "V", "V", "vi"]];
+// The major is a subjective value of how "major" the progression sounds to me.
+var chordProgs = [{prog: ["I", "IV", "V", "I"], major: 1.0},
+                  {prog: ["I", "IV", "V", "IV"], major: 1.0},
+                  {prog: ["vi", "ii", "V", "I"], major: 0.2},
+                  {prog: ["V", "IV", "I", "I"], major: 1.0},
+                  {prog: ["vii", "V", "V", "vi"], major: 0.9},
+                  {prog: ["vi", "I", "ii", "vi"], major: 0.2},
+                  {prog: ["vi", "I", "IV", "V"], major: 0.5},];
 var currentChordProg = chordProgs[0];
 
 /**
@@ -228,20 +247,39 @@ function notesInChord(chord, startOctave) {
             return chordRoot.getOffset(interval);
         });
     }
+    return intervalsToNotes(intervalsInChord(chord));
+}
+
+function intervalsInChord(chord) {
     // If you wanted to implement some non-diatonic chords here, you could.
     switch (chord) {
         case "I":
         case "IV":
         case "V":
-            return intervalsToNotes([0, 4, 7, 11, 14, 17]);
+            return [0, 4, 7, 11, 14, 17];
         case "ii":
         case "iii":
         case "vi":
-            return intervalsToNotes([0, 3, 7, 10, 14, 17]);
+            return [0, 3, 7, 10, 14, 17];
         case "vii":
-            return intervalsToNotes([0, 3, 6, 10, 13, 17]);
+            return [0, 3, 6, 10, 13, 17];
     }
-    return 
+}
+
+/**
+ * Returns invervals in the mode of a given chord.
+ */
+function keyIntervalsRelative(chord) {
+    switch (chord) {
+        case "I": return [0, 2, 4, 5, 7, 9, 11, 12, 14, 16];
+        case "ii": return [2, 4, 5, 7, 9, 11, 12, 14, 16, 17];
+        case "iii": return [4, 5, 7, 9, 11, 12, 14, 16, 17, 19];
+        case "IV": return [5, 7, 9, 11, 12, 14, 16, 17, 19, 21];
+        case "V": return [7, 9, 11, 12, 14, 16, 17, 19, 21, 23];
+        case "vi": return [9, 11, 12, 14, 16, 17, 19, 21, 23, 24];
+        case "vii": return [11, 12, 14, 16, 17, 19, 21, 23, 24, 26];
+        default: return [0, 2, 4, 5, 7, 9, 11, 12, 14, 16];
+    }
 }
 
 /**
@@ -257,8 +295,10 @@ function playChord() {
     var progPosition = 0;
 
     var chordLoop = function() {        
-        if (numHitsAtPosition == 0)
+        if (numHitsAtPosition == 0) {
             playArp(progPosition);
+            playBass(progPosition);
+        }
 
         voiceKeyChord("chord", currentChordProg[progPosition], 
             variableAttributes.chordOctave, variableAttributes.chordComplexity,
@@ -280,6 +320,14 @@ function playChord() {
     chordLoop();
 }
 
+// A value of -1 will be a rest
+var arpPatterns = [[0, 1, 2, 1, 0, 1, 2, 3],
+                   [0, 2, 4, 5, 4, 5, 6, 8],
+                   [2, 0, 2, 3, 5, 8, 7, 8],
+                   [0, 2, 4, 5, 0, 2, 4, 5],
+                   [4, 3, 5, 4, 3, 5, 7, -1]];
+var currentArpPattern = arpPatterns[0];
+
 /**
  * The play function for the arpeggiator channel. This gets called every
  * chord change by playChord().
@@ -289,32 +337,30 @@ function playArp(progPosition) {
 
     var intervalCounter = 0;
 
-    var voicedNote = 0;
-
-    var chooseNextNote = function() {
-        var maxInterval = intervalsInKey[variableAttributes.arpRange];
-        var randomNext = Math.round(Math.random() * 11);
-        if ($.inArray(randomNext, intervalsInKey)) {
-            voicedNote = randomNext;
-        }
-    }
+    var patternPos = 0;
     
     var arpLoop = function() {
         var intervalsPerNote = Math.round(8 / variableAttributes.arpComplexity);
 
         // If we're at an interval that our attributes say should be played.
         if (intervalCounter % intervalsPerNote == 0) {
+            if (patternPos == currentArpPattern.length)
+                patternPos = 0;
+
             // Computes a duration unrelated to the interval counter.
             var duration = variableAttributes.arpStaccato * (1 / variableAttributes.arpComplexity);
-            
-            var adjustedProgPos = progPosition;//progPosition == 0 ? currentChordProg.length - 1 : progPosition - 1;
-            
+            var currentChord = currentChordProg[progPosition];
             // Array of notes in the current played chord.
-            var chordNotes = notesInChord(currentChordProg[adjustedProgPos], variableAttributes.arpOctave);
+            var chordNotes = notesInChord(currentChord, variableAttributes.arpOctave);
+            var modalIntervals = keyIntervalsRelative(currentChord);
+
+            var noteVoice = globalAttributes.keyNote;
+            noteVoice.setOctave(variableAttributes.arpOctave);
+            noteVoice = noteVoice.getOffset(modalIntervals[currentArpPattern[patternPos]]);
+
+            voiceNote("arp", noteVoice.getName(), duration);
             
-            chooseNextNote();
-            console.log(voicedNote);
-            voiceNote("harm", globalAttributes.keyNote.getOffset(intervalsInKey[voicedNote]).getName(), duration);
+            patternPos++;
         }
         intervalCounter++;
 
@@ -326,9 +372,25 @@ function playArp(progPosition) {
     arpLoop();
 }
 
+function playBass(progPosition) {
+
+}
+
 /**
  * Chooses a chord via a 
  */
 function chooseChord() {
+    // Keeps track of the amount of notes played. This will terminate when
+    // bassRhythmComplexity is reached.
+    var notesCounter = 0;
+    var bassLoop = function() {
+        var noteDuration = 0;
+        noteDuration = 4 / variableAttributes.bassRhythmComplexity;
 
+
+        if (notesCounter < variableAttributes.bassRhythmComplexity && globalAttributes.playing) {
+            setTimeout(bassLoop, noteDuration);
+        }
+    };
+    bassLoop();
 }
