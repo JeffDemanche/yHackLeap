@@ -80,11 +80,16 @@ var globalAttributes = {
  * Values which might be changed through various hand motions.
  */
 var variableAttributes = {
-    arpComplexity: 0.5,
+    // In terms of notes per beat.
+    arpComplexity: 2,
+    // Number of chord tones usable by the arp.
+    arpRange: 3,
+    arpStaccato: 0.70,
+    arpOctave: 4,
 
     // 3 -> triad, 4 -> seventh, etc.
-    chordComplexity: 3,
-    chordOctave: 2,
+    chordComplexity: 2,
+    chordOctave: 3,
     chordLengthBeats: 4,
     chordHitsPerLength: 1,
     // How much of the chord duration is voiced.
@@ -98,7 +103,7 @@ var sfInstruments = ['acoustic_bass', 'acoustic_grand_piano', 'cello',
     'orchestral_harp', 'violin'];
 
 var bassChannel = { name: "bass", channel: 0, instr: 'acoustic_bass', velocity: 100 };
-var chordChannel = { name: "chord", channel: 1, instr: 'cello', velocity: 100 };
+var chordChannel = { name: "chord", channel: 1, instr: 'cello', velocity: 45 };
 var arpChannel = { name: "arp", channel: 2, instr: 'orchestral_harp', velocity: 100 };
 var harmChannel = { name: "harm", channel: 3, instr: 'violin', velocity: 100 };
 
@@ -132,7 +137,7 @@ var chordProgs = [["I", "IV", "V", "I"],
                   ["I", "IV", "V", "IV"],
                   ["vi", "ii", "V", "I"],
                   ["V", "IV", "I", "I"],
-                  ["vii", "V", "V", "I"]];
+                  ["vii", "V", "V", "vi"]];
 var currentChordProg = chordProgs[0];
 
 /**
@@ -168,7 +173,6 @@ function voiceMelody(channel, notes) {
  * @param {*} channelName The name of the channel as defined in channel object.
  * @param {*} noteName The string name of the note (i.e. "A4").
  * @param {*} duration The duration of the voiced note, in beats at current tempo.
- * @param {*} velocity The velocity of the note, from 0 to 100.
  */
 function voiceNote(channelName, noteName, duration) {
     var c = $.grep(channels, function(e){ return e.name == channelName })[0];
@@ -211,7 +215,7 @@ function beatsToMillis(beats) {
 /**
  * Gets an array of notes which make up a given chord, whose root is in the
  * given start octave. The array contains upper notes (7, 9th, 11th, 13th, etc).
- * @param {*} chord The chord, chosen from the list of chordOptions.
+ * @param {String} chord The chord, in string form.
  * @param {*} startOctave The octave that the chord root lies in.
  */
 function notesInChord(chord, startOctave) {
@@ -224,33 +228,38 @@ function notesInChord(chord, startOctave) {
             return chordRoot.getOffset(interval);
         });
     }
-    // Here, you could define more chords (like jazz chords), if you wanted.
-    switch(chord){
-        case "I": return intervalsToNotes([0, 4, 7, 11, 14, 17]);
-        case "ii": return intervalsToNotes([2, 5, 9, 12, 16, 19]);
-        case "iii": return intervalsToNotes([4, 7, 11, 14, 17, 21]);
-        case "IV": return intervalsToNotes([5, 9, 12, 16, 19, 23]);
-        case "V": return intervalsToNotes([7, 11, 14, 17, 21, 24]);
-        case "vi": return intervalsToNotes([9, 12, 16, 19, 23, 26]);
-        case "vii": return intervalsToNotes([11, 14, 17, 21, 24, 28]);
-        default: return [];
+    // If you wanted to implement some non-diatonic chords here, you could.
+    switch (chord) {
+        case "I":
+        case "IV":
+        case "V":
+            return intervalsToNotes([0, 4, 7, 11, 14, 17]);
+        case "ii":
+        case "iii":
+        case "vi":
+            return intervalsToNotes([0, 3, 7, 10, 14, 17]);
+        case "vii":
+            return intervalsToNotes([0, 3, 6, 10, 13, 17]);
     }
+    return 
 }
 
 /**
  * The play function for the chord channel.
  */
 function playChord() {
-    // The index in the chord progression we're playing.
-    var progPosition = 0;
-
     var numHitsAtPosition = 0;
 
     // The duration (in decimal beats) that a single HIT of a chord is played.
     var chordHitDuration = variableAttributes.chordStaccato * 
             (variableAttributes.chordLengthBeats / variableAttributes.chordHitsPerLength);
 
-    var loop = function() {
+    var progPosition = 0;
+
+    var chordLoop = function() {        
+        if (numHitsAtPosition == 0)
+            playArp(progPosition);
+
         voiceKeyChord("chord", currentChordProg[progPosition], 
             variableAttributes.chordOctave, variableAttributes.chordComplexity,
             chordHitDuration);
@@ -263,21 +272,58 @@ function playChord() {
         if (progPosition == currentChordProg.length) {
             progPosition = 0;
         }
-        
 
-        setTimeout(function() {
-            if (globalAttributes.playing)
-                loop();
-        }, beatsToMillis(variableAttributes.chordLengthBeats / variableAttributes.chordHitsPerLength));
-    }
-    loop();
+        if (globalAttributes.playing)
+            setTimeout(chordLoop, 
+                beatsToMillis(variableAttributes.chordLengthBeats / variableAttributes.chordHitsPerLength));
+    };
+    chordLoop();
 }
 
 /**
- * The play function for the arpeggiator channel.
+ * The play function for the arpeggiator channel. This gets called every
+ * chord change by playChord().
  */
-function playArp() {
+function playArp(progPosition) {
+    var minArpInterval = beatsToMillis(1/8);
 
+    var intervalCounter = 0;
+
+    var voicedNote = 0;
+
+    var chooseNextNote = function() {
+        var maxInterval = intervalsInKey[variableAttributes.arpRange];
+        var randomNext = Math.round(Math.random() * 11);
+        if ($.inArray(randomNext, intervalsInKey)) {
+            voicedNote = randomNext;
+        }
+    }
+    
+    var arpLoop = function() {
+        var intervalsPerNote = Math.round(8 / variableAttributes.arpComplexity);
+
+        // If we're at an interval that our attributes say should be played.
+        if (intervalCounter % intervalsPerNote == 0) {
+            // Computes a duration unrelated to the interval counter.
+            var duration = variableAttributes.arpStaccato * (1 / variableAttributes.arpComplexity);
+            
+            var adjustedProgPos = progPosition;//progPosition == 0 ? currentChordProg.length - 1 : progPosition - 1;
+            
+            // Array of notes in the current played chord.
+            var chordNotes = notesInChord(currentChordProg[adjustedProgPos], variableAttributes.arpOctave);
+            
+            chooseNextNote();
+            console.log(voicedNote);
+            voiceNote("harm", globalAttributes.keyNote.getOffset(intervalsInKey[voicedNote]).getName(), duration);
+        }
+        intervalCounter++;
+
+        // Run the arp for a measure, then stop, ensuring each measure is synced.
+        // Four measures, four beats per measure, eight intervals per beat.
+        if (globalAttributes.playing && intervalCounter != (4 * 8) - 1)
+            setTimeout(arpLoop, minArpInterval);
+    };
+    arpLoop();
 }
 
 /**
