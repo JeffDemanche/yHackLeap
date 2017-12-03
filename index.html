@@ -15,12 +15,16 @@
         <script src="https://js.leapmotion.com/leap-0.6.3.min.js"></script>
         <script src="music.js"></script>
         <script src="leap.js"></script>
+        
     </head>
     <body>
         <section id="header-container">
             <h1>Conductor (yHack 2017)</h1>
             <button name="Start" id="start-button">Start</button>
-            <button name="Stop" id="stop-button">Stop</button>
+            <button name="Stop" id="stop-button">Stop</button><br>
+            <div id="light-bar">
+
+            </div>
             <div id="info-handheight">
                 Hand Height:<span id="hand-height">0</span>
             </div>
@@ -37,8 +41,6 @@
                 Pinky Bend:<span id="pinky-bend">0</span>
             </div>
         </section>
-        <canvas id="visualizer">
-            
-        </canvas>
+        <script src="visualizer.js"></script>
     </body>
 </html>

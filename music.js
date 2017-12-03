@@ -96,6 +96,16 @@ class Note {
     getName() {
         return this.pitch + this.octave;
     }
+
+    getLight() {
+        for (var i = 0; i < 8; i++) {
+            if (globalAttributes.keyNote.getOffset(intervalsInKey[i]).pitch ==
+                this.pitch) {
+                    return i;
+                }
+        }
+        return -1;
+    }
 }
 
 /**
@@ -126,7 +136,7 @@ var variableAttributes = {
     chordComplexity: 3,
     chordOctave: 3,
     chordLengthBeats: 4,
-    chordHitsPerLength: 2,
+    chordHitsPerLength: 1,
     // How much of the chord duration is voiced.
     chordStaccato: 0.98,
 
@@ -140,14 +150,15 @@ var variableAttributes = {
 
 /** Correlate to soundfont files from /soundfont */
 var sfInstruments = ['acoustic_bass', 'acoustic_grand_piano', 'cello',
-    'orchestral_harp', 'violin'];
+    'orchestral_harp', 'violin', 'taiko_drum', 'tuba'];
 
-var bassChannel = { name: "bass", channel: 0, instr: 'cello', velocity: 100 };
-var chordChannel = { name: "chord", channel: 1, instr: 'acoustic_grand_piano', velocity: 100 };
+var bassChannel = { name: "bass", channel: 0, instr: 'acoustic_bass', velocity: 100 };
+var chordChannel = { name: "chord", channel: 1, instr: 'cello', velocity: 100 };
 var arpChannel = { name: "arp", channel: 2, instr: 'orchestral_harp', velocity: 100 };
-var harmChannel = { name: "harm", channel: 3, instr: 'violin', velocity: 100 };
+var harmChannel = { name: "harm", channel: 3, instr: 'taiko_drum', velocity: 0 };
+var brassChannel = { name: "brass", channel: 4, instr: 'tuba', velocity: 0 };
 
-var channels = [bassChannel, chordChannel, arpChannel, harmChannel];
+var channels = [bassChannel, chordChannel, arpChannel, harmChannel, brassChannel];
 
 function intializeMIDI() {
     MIDI.loadPlugin({
@@ -236,6 +247,7 @@ function voiceNote(channelName, noteName, duration) {
     var millisDur = beatsToMillis(duration);
 
     MIDI.noteOn(c.channel, note, c.velocity, 0);
+    light(new Note(noteName).getLight());
     setTimeout(function() { MIDI.noteOff(c.channel, note, 0) }, millisDur);
 }
 
@@ -250,7 +262,8 @@ function voiceKeyChord(channelName, chordName, rootOctave, complexity, duration)
     var inChord = notesInChord(chordName, rootOctave);
     
     for (var i = 0; i < complexity; i++) {
-        notes.push(inChord[i].getName());
+        if (inChord[i])
+            notes.push(inChord[i].getName());
     }
     voiceChord(channelName, notes, duration);
 }
@@ -335,11 +348,13 @@ function playChord() {
         if (numHitsAtPosition == 0) {
             playArp(progPosition);
             playBass(progPosition);
+            playGeneric("harm", 3, 0, progPosition);
+            playGeneric("brass", 3, 1, progPosition);
         }
 
         voiceKeyChord("chord", currentChordProg.prog[progPosition], 
             variableAttributes.chordOctave, variableAttributes.chordComplexity,
-            variableAttributes.chordStaccato * chordHitDuration);
+            chordHitDuration);
         // Update a couple of counters.
         numHitsAtPosition++;
         if (numHitsAtPosition == variableAttributes.chordHitsPerLength) {
@@ -412,7 +427,8 @@ function playArp(progPosition) {
 var bassSequences = [[[0, 0.5], [-1, 0.5], [0, 3]],
                      [[0, 0.75], [2, 0.25], [4, 0.5], [-1, 0.5], [0, 2]],
                      [[2, 1], [0, 1], [-1, 0.5], [4, 1.5]],
-                     [[0, 0.5], [2, 0.5], [-1, 0.75], [4, .25], [0, 1], [2, 1]]];
+                     [[0, 0.5], [2, 0.5], [-1, 0.75], [4, .25], [0, 1], [2, 1]],
+                     [[5, 0.5], [0, 0.5] [-1, 0.75], [0, 0.25], [2, 0.5], [5, 1.5]]];
 var currentBassSequence = bassSequences[1];
 
 function playBass(progPosition) {
@@ -438,4 +454,28 @@ function playBass(progPosition) {
         seqCounter++;
     };
     bassLoop();
+}
+
+var genericSequences = [[[0, 0.75], [5, .25], [0, 0.5], [5, 0.5], [0, 0.75], [5, .25], [0, 0.5], [5, 0.5]],
+                        [[-1, 1.75], [4, .25], [4, .5], [4, .5], [4, 1]]];
+
+function playGeneric(channel, octave, gSeqIndex, progPosition) {
+    var currentGenSequence = genericSequences[gSeqIndex];
+    var seqCounter = 0;
+    var loop = function() {
+        var noteDuration = currentGenSequence[seqCounter][1];
+        var currentChord = currentChordProg.prog[progPosition];
+        var modalIntervals = keyIntervalsRelative(currentChord);
+        var interval = currentGenSequence[seqCounter][0];
+        var noteToPlay = globalAttributes.keyNote.getOffset(modalIntervals[interval]);
+        noteToPlay.setOctave(octave);
+
+        voiceNote(channel, noteToPlay.getName(), variableAttributes.arpStaccato * noteDuration);
+        
+        if (globalAttributes.playing && seqCounter < currentGenSequence.length - 1) {
+            setTimeout(loop, beatsToMillis(noteDuration));
+        }
+        seqCounter++;
+    }
+    loop();
 }
