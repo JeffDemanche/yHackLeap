@@ -11,6 +11,41 @@ $(function() {
         $("#stop-button").prop("disabled", false);
         $("#start-button").prop("disabled", true);
     });
+
+    $("body").keypress(function(event) {
+        switch(event.which) {
+            // q
+            case 119: currentChordProg = chordProgs[0]; break;
+            // w
+            case 101: currentChordProg = chordProgs[1]; break;
+            // e
+            case 114: currentChordProg = chordProgs[2]; break;
+            // r
+            case 113: currentChordProg = chordProgs[3]; break;
+            // t
+            case 121: currentChordProg = chordProgs[4]; break;
+
+            // a
+            case 97: currentArpPattern = arpPatterns[0]; break;
+            // s
+            case 115: currentArpPattern = arpPatterns[1]; break;
+            // d
+            case 100: currentArpPattern = arpPatterns[2]; break;
+            // f
+            case 102: currentArpPattern = arpPatterns[3]; break;
+            // g
+            case 103: currentArpPattern = arpPatterns[4]; break;
+
+            // z
+            case 122: currentBassSequence = bassSequences[0]; break;
+            // x
+            case 120: currentBassSequence = bassSequences[1]; break;
+            // c
+            case 99: currentBassSequence = bassSequences[2]; break;
+            // v
+            case 118: currentBassSequence = bassSequences[3]; break;
+        }
+    });
 });
 
 var pitches = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
@@ -91,7 +126,7 @@ var variableAttributes = {
     chordComplexity: 3,
     chordOctave: 3,
     chordLengthBeats: 4,
-    chordHitsPerLength: 1,
+    chordHitsPerLength: 2,
     // How much of the chord duration is voiced.
     chordStaccato: 0.98,
 
@@ -107,9 +142,9 @@ var variableAttributes = {
 var sfInstruments = ['acoustic_bass', 'acoustic_grand_piano', 'cello',
     'orchestral_harp', 'violin'];
 
-var bassChannel = { name: "bass", channel: 0, instr: 'acoustic_bass', velocity: 100 };
-var chordChannel = { name: "chord", channel: 1, instr: 'cello', velocity: 100 };
-var arpChannel = { name: "arp", channel: 2, instr: 'oboe', velocity: 100 };
+var bassChannel = { name: "bass", channel: 0, instr: 'cello', velocity: 100 };
+var chordChannel = { name: "chord", channel: 1, instr: 'acoustic_grand_piano', velocity: 100 };
+var arpChannel = { name: "arp", channel: 2, instr: 'orchestral_harp', velocity: 100 };
 var harmChannel = { name: "harm", channel: 3, instr: 'violin', velocity: 100 };
 
 var channels = [bassChannel, chordChannel, arpChannel, harmChannel];
@@ -152,8 +187,8 @@ function intializeMIDI() {
 
 // A bank of chord progressions that could be swapped in at any time.
 // The major is a subjective value of how "major" the progression sounds to me.
-var chordProgs = [{prog: ["I", "IV", "V", "I"], major: 1.0},
-                  {prog: ["I", "IV", "V", "IV"], major: 1.0},
+var chordProgs = [{prog: ["I", "IV", "V", "IV"], major: 1.0},
+                  {prog: ["vi", "vi", "IV", "V"], major: 1.0},
                   {prog: ["vi", "ii", "V", "I"], major: 0.2},
                   {prog: ["V", "IV", "I", "I"], major: 1.0},
                   {prog: ["vii", "V", "V", "vi"], major: 0.9},
@@ -376,7 +411,8 @@ function playArp(progPosition) {
 
 var bassSequences = [[[0, 0.5], [-1, 0.5], [0, 3]],
                      [[0, 0.75], [2, 0.25], [4, 0.5], [-1, 0.5], [0, 2]],
-                     [[2, 1], [0, 1], [-1, 0.5], [4, 1.5]]];
+                     [[2, 1], [0, 1], [-1, 0.5], [4, 1.5]],
+                     [[0, 0.5], [2, 0.5], [-1, 0.75], [4, .25], [0, 1], [2, 1]]];
 var currentBassSequence = bassSequences[1];
 
 function playBass(progPosition) {
